@@ -5,7 +5,7 @@
 
 using namespace std;
 
-
+//
 //Server information
 class ServerInfo
 {
