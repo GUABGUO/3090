@@ -9,15 +9,6 @@ class ServerInfo
 {
 private:
 	unordered_map<string,vector<int>> server_info_;
-public:
-	void insertdata()
-	{
-		server_info_.emplace("NV603",value(92,324,53800,500));
-	};
-	void sortdata()
-	{
-		
-	}
 
 	vector<int> value(int cpu, int ram, int buycost, int runcost)
 	{
@@ -28,6 +19,16 @@ public:
 		temp.push_back(runcost);
 		return temp;
 	};
+
+public:
+	void insertdata()
+	{
+		server_info_.emplace("NV603",value(92,324,53800,500));
+	};
+
+	void sortdata()
+	{
+	}
 
 	vector<int> searchdata(string type)
 	{
@@ -67,11 +68,6 @@ class VMInfo
 {
 private:
 	unordered_map<string,vector<int>> vm_info_;
-public:
-	void insertdata()
-	{
-		vm_info_.emplace("c3.small.1",value(1,1,0));
-	};
 
 	vector<int> value(int cpu, int ram, int nodetype)
 	{
@@ -80,6 +76,12 @@ public:
 		temp.push_back(ram);
 		temp.push_back(nodetype);
 		return temp;
+	};
+
+public:
+	void insertdata()
+	{
+		vm_info_.emplace("c3.small.1",value(1,1,0));
 	};
 
 	vector<int> searchdata(string type)
@@ -124,16 +126,23 @@ public:
 	int ram_;
 	int buycost_;
 	int runcost_;
-	float proportion_;
-	int nodetype_;
+	//A或B节点
+	int cpu_left_[2];
+	int ram_left_[2];
+	//float proportion_;
+
 	Server(string type,ServerInfo server_info)
 	{
-		type_=type;
+		type_ = type;
 		vector<int> temp = server_info.searchdata(type);
-		cpu_= temp.at(0);
-		ram_= temp.at(1);
-		buycost_= temp.at(2);
-		runcost_= temp.at(3);
+		cpu_ = temp.at(0);
+		ram_ = temp.at(1);
+		buycost_ = temp.at(2);
+		runcost_ = temp.at(3);
+		cpu_left_[0]= cpu_/2;
+		cpu_left_[1]= cpu_/2;
+		ram_left_[0] = ram_/2;
+		ram_left_[1] = ram_/2;
 		//
 	};
 
@@ -144,31 +153,19 @@ class ServerCurrent
 {
 private:
 	unordered_map<int,Server> server_current_;
-	size_t id;
+	int id = 0;
+
 
 public:
-	ServerCurrent()
-	{
-		id = 0;
-	};
-	void buyserver(ServerInfo server_info)
+	void buyserver(ServerInfo server_info,string type)
 	{
 		if (0 == id)
 		{
 			//初始购买
 		}
-		string type;
 		Server server(type,server_info);
 		server_current_.emplace(id,server);
 		id++;
-	};
-	void deployvm(int vm_id, string type, int cpu, int ram, int nodetype)
-	{
-		
-	};
-	void deletevm()
-	{
-
 	};
 	Server searchdata(int server_id)
 	{
@@ -181,7 +178,31 @@ public:
 		{
 			return (*it).second;
 		}
-		
+	};
+
+	void deployvm(int server_id,  int cpu, int ram, int nodetype)
+	{
+		unordered_map<int,Server>::iterator it = server_current_.find(server_id);
+    	if (it == server_current_.end())
+		{
+    	    cout<<"Element Not Present"<<endl;
+		}
+   		else
+		{
+			if (0 == nodetype)
+			{
+				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu;
+				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram;
+			}
+			else
+			{
+				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu;
+				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu/2;
+				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram;
+				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram/2;
+			}
+			
+		}
 	};
 
 };
@@ -189,7 +210,7 @@ public:
 class VMCurrent
 {
 private:
-	/* data */
+	unordered_map<int,int[2]> vm_current_;
 public:
 };
 
@@ -210,7 +231,7 @@ int main(int argc, char** argv)
 	VMInfo vm_current;
 
 	//初始购买 策略未定
-	server_current.buyserver(server_info);
+	server_current.buyserver(server_info,"aa");
 	//天数
 	int day;
 	for (size_t i = 0; i < day; i++)
@@ -226,17 +247,22 @@ int main(int argc, char** argv)
 			{
 				//if ( 需要购买 策略未定)
 				{
-					server_current.buyserver(server_info);
+					server_current.buyserver(server_info,"aa");
 				}
 
 				vector<int> temp = vm_info.searchdata("aa");
-				server_current.deployvm(1, "aa", temp.at(0),temp.at(1),temp.at(2));
+
+				server_current.deployvm(0, temp.at(0),temp.at(1),temp.at(2));
+
+				
+
+
+				//vector<int>().swap(temp);
 			}
 			
 
 			//if ( del )
 			{
-				server_current.deletevm();
 			}
 			
 		}
