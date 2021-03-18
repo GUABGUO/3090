@@ -5,7 +5,6 @@
 #include <utility>
 
 using namespace std;
-
 typedef pair<string, int> PAIR;
 
 struct CmpByValue {
@@ -13,7 +12,6 @@ struct CmpByValue {
     return lhs.second < rhs.second;
     }
 };
-
 
 int main()
 {
@@ -27,6 +25,6 @@ int main()
     {  
         cout << ss[i].second << endl;  
     }  
-    return 0;
+     return 0;
 
 }
