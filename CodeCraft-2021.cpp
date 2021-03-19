@@ -1,6 +1,8 @@
 #include <iostream>
+#include <cmath>
 #include <vector>
 #include <unordered_map>
+#include <queue>
 
 using namespace std;
 
@@ -33,14 +35,7 @@ public:
 	vector<int> searchdata(string type)
 	{
 		unordered_map<string,vector<int>>::iterator it = server_info_.find(type);
-    	if (it == server_info_.end())
-		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			return value((*it).second.at(0),(*it).second.at(1),(*it).second.at(2),(*it).second.at(3));
-		}
+		return value((*it).second.at(0),(*it).second.at(1),(*it).second.at(2),(*it).second.at(3));
 	}
 
 
@@ -59,7 +54,6 @@ public:
 			cout<<(*it).second.at(2)<<endl;
 			cout<<(*it).second.at(3)<<endl;
 		}
-
 	}
 };
 
@@ -87,30 +81,16 @@ public:
 	vector<int> searchdata(string type)
 	{
 		unordered_map<string,vector<int>>::iterator it = vm_info_.find(type);
-    	if (it == vm_info_.end())
-		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			return value((*it).second.at(0),(*it).second.at(1),(*it).second.at(2));
-		}
+		return value((*it).second.at(0),(*it).second.at(1),(*it).second.at(2));
 	}
 
 	void showdata()
 	{
 		unordered_map<string,vector<int>>::iterator it = vm_info_.find("c3.small.1");
-    	if (it == vm_info_.end())
-		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			cout<<(*it).first<<endl;
-			cout<<(*it).second.at(0)<<endl;
-			cout<<(*it).second.at(1)<<endl;
-			cout<<(*it).second.at(2)<<endl;
-		}
+		cout<<(*it).first<<endl;
+		cout<<(*it).second.at(0)<<endl;
+		cout<<(*it).second.at(1)<<endl;
+		cout<<(*it).second.at(2)<<endl;
 
 	}
 
@@ -131,7 +111,7 @@ public:
 	//表示AB节点的剩余空间
 	int cpu_left_[2];
 	int ram_left_[2];
-	//float proportion_;
+	float proportion_[2];
 
 	Server(string type, int cpu, int ram, int buycost, int runcost)
 	{
@@ -144,6 +124,8 @@ public:
 		cpu_left_[1]= cpu_/2;
 		ram_left_[0] = ram_/2;
 		ram_left_[1] = ram_/2;
+		proportion_[0] = float(cpu_left_[0])/float(ram_left_[0]);
+		proportion_[1] = float(cpu_left_[1])/float(ram_left_[1]);
 	}
 };
 
@@ -154,55 +136,158 @@ private:
 	unordered_map<int,Server> server_current_;
 	int id = 0;
 
+	struct cmp{
+        template<typename T, typename U>
+        bool operator()(T const& left, U const &right) {
+            if (left.second > right.second) return true;
+            return false;
+        }
+    };
+
 public:
 	void buyserver(string type, int cpu, int ram, int buycost, int runcost)
 	{
-		Server server(type, cpu, ram, buycost, runcost);
-		server_current_.emplace(id,server);
+		server_current_.emplace(id,Server(type, cpu, ram, buycost, runcost));
 		id++;
 	}
 
 	Server searchdata(int server_id)
 	{
 		unordered_map<int,Server>::iterator it = server_current_.find(server_id);
-    	if (it == server_current_.end())
+		return (*it).second;
+	}
+
+	vector<int> deployserver(int cpu, int ram, int nodetype)
+	{
+		float vm_proportion = float(cpu)/float(ram);
+		vector<int> return_temp;
+
+    	priority_queue<pair<vector<int>, float>, vector<pair<vector<int>, float>>, cmp> server_queue;
+    	for(unordered_map<int,Server>::iterator it = server_current_.begin(); it!=server_current_.end(); it++)
 		{
-    	    cout<<"Element Not Present"<<endl;
+			int server_id = (*it).first;
+			float server_proportion0 = (*it).second.proportion_[0];
+			float server_proportion1 = (*it).second.proportion_[1];
+			if (-1 != server_proportion0 && 0 != server_proportion0)
+			{
+				vector<int> temp0;
+				temp0.push_back(server_id);
+				temp0.push_back(0);
+				float proportion0 = fabs(vm_proportion - server_proportion0);
+				server_queue.push(make_pair(temp0,server_proportion0));
+
+				if (-1 != server_proportion1 && 0 != server_proportion1)
+				{
+					vector<int> temp1;
+					temp1.push_back(server_id);
+					temp1.push_back(1);
+					float proportion1 = fabs(vm_proportion - server_proportion1);
+					server_queue.push(make_pair(temp1,server_proportion1));
+				}
+			}
 		}
-   		else
+		if (0 == nodetype)
 		{
-			return (*it).second;
+			while (1)
+			{
+				int server_id = server_queue.top().first.at(0);
+				int server_flag = server_queue.top().first.at(1);
+				int server_cpu = searchdata(server_id).cpu_left_[server_flag];
+				int server_ram = searchdata(server_id).ram_left_[server_flag];
+
+				if (server_cpu - cpu < 0 || server_ram - ram < 0)
+				{
+					server_queue.pop();
+				}
+				else 
+				{
+					return_temp.push_back(server_id);
+					return_temp.push_back(server_flag);
+					break;
+				}
+			}
 		}
+		else if (1 == nodetype)
+		{
+			while (1)
+			{
+				int server_id = server_queue.top().first.at(0);
+				int server_cpu0 = searchdata(server_id).cpu_left_[0];
+				int server_ram0 = searchdata(server_id).ram_left_[0];
+				int server_cpu1 = searchdata(server_id).cpu_left_[1];
+				int server_ram1 = searchdata(server_id).ram_left_[1];
+
+
+				if (server_cpu0 - cpu/2 < 0 || server_ram0 - ram/2 < 0 || server_cpu1 - cpu/2 < 0 || server_ram1 - ram/2 )
+				{
+					server_queue.pop();
+				}
+				else 
+				{
+					return_temp.push_back(server_id);
+					return_temp.push_back(0);
+					break;
+				}
+			}
+		}
+		
+		return return_temp;
 	}
 
 	void deployvm(int server_id,  int cpu, int ram, int nodetype, int nodeplace)
 	{
 		unordered_map<int,Server>::iterator it = server_current_.find(server_id);
-    	if (it == server_current_.end())
+		if (0 == nodetype)
 		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			if (0 == nodetype)
+			if (0 == nodeplace)
 			{
-				if (0 == nodeplace)
+				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu;
+				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram;
+				if (0 == (*it).second.ram_left_[0])
 				{
-					(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu;
-					(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram;
+					(*it).second.proportion_[0] = -1;
+				}
+				else 
+				{
+					(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
+				}
+			}
+			else if (1 == nodeplace)
+			{
+				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu;
+				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram;
+				if (0 == (*it).second.ram_left_[1])
+				{
+					(*it).second.proportion_[1] = -1;
 				}
 				else
 				{
-					(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu;
-					(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram;
+					(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 				}
 			}
-			else
+		}
+		else if (1 == nodetype)
+		{
+			(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu/2;
+			(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu/2;
+			(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram/2;
+			(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram/2;
+			if (0 == (*it).second.ram_left_[0])
 			{
-				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu/2;
-				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu/2;
-				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram/2;
-				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram/2;
+				(*it).second.proportion_[0] = -1;
+			}
+			else 
+			{
+				(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
+			}
+
+			if (0 == (*it).second.ram_left_[1])
+			{
+				(*it).second.proportion_[1] = -1;
+			}
+			else 
+			{
+				(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 			}
 		}
 	}
@@ -210,32 +295,29 @@ public:
 	void deletedata(int server_id, int cpu, int ram, int nodetype, int nodeplace)
 	{
 		unordered_map<int,Server>::iterator it = server_current_.find(server_id);
-    	if (it == server_current_.end())
+		if (0 == nodetype)
 		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			if (0 == nodetype)
+			if (0 == nodeplace)
 			{
-				if (0 == nodeplace)
-				{
-					(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu;
-					(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram;
-				}
-				else
-				{
-					(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu;
-					(*it).second.ram_left_[1] = (*it).second.ram_left_[1] + ram;
-				}
+				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu;
+				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram;
+				(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
 			}
-			else
+			else if (1 == nodeplace)
 			{
-				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu/2;
-				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu/2;
-				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram/2;
-				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] + ram/2;
-			
+				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu;
+				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] + ram;
+				(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
+			}
+		}
+		else if (1 == nodetype)
+		{
+			(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu/2;
+			(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu/2;
+			(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram/2;
+			(*it).second.ram_left_[1] = (*it).second.ram_left_[1] + ram/2;
+			(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
+			(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 		}
 	}
 };
@@ -276,20 +358,12 @@ public:
 	VM searchdata(int vm_id)
 	{
 		unordered_map<int,VM>::iterator it = vm_current_.find(vm_id);
-    	if (it == vm_current_.end())
-		{
-    	    cout<<"Element Not Present"<<endl;
-		}
-   		else
-		{
-			return (*it).second;
-		}
+		return (*it).second;
 	}
 
 	void deployvm(int vm_id, int server_id, int nodeplace, string type, int cpu, int ram, int nodetype)
 	{
-		VM vm(server_id, nodeplace, type, cpu, ram, nodetype);
-		vm_current_.emplace(vm_id,vm);
+		vm_current_.emplace(vm_id,VM(server_id, nodeplace, type, cpu, ram, nodetype));
 	}
 
 	void deletevm(int vm_id)
@@ -372,12 +446,13 @@ int main(int argc, char** argv)
 					server_current.buyserver(type,cpu,ram,buycost,runcost);
 				}
 
-				//进行部署 策略未定
-				int server_id;
-				int nodeplace ;
+				//进行部署 
 				int cpu = vm_info.searchdata(type).at(0);
 				int ram = vm_info.searchdata(type).at(1);
 				int nodetype = vm_info.searchdata(type).at(2);
+				vector<int> temp = server_current.deployserver(cpu, ram, nodetype);
+				int server_id = temp.at(0);
+				int nodeplace = temp.at(1);
 				server_current.deployvm(server_id, cpu, ram, nodetype, nodeplace);
 				vm_current.deployvm(vm_id, server_id, nodeplace, type, cpu, ram, nodetype);
 			}
