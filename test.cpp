@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <utility>
 
+#include <string>
+#include <cstring>
+#include <sstream> //stringstrea
+
 using namespace std;
 /*
 typedef pair<string, int> PAIR;
@@ -15,7 +19,6 @@ struct CmpByValue {
     return lhs.second < rhs.second;
     }
 };
-*/
 struct cmp{
         template<typename T, typename U>
         bool operator()(T const& left, U const &right) {
@@ -23,6 +26,29 @@ struct cmp{
             return false;
         }
     };
+    */
+vector <string> stringsplit(const string &str, const char *delim)
+{
+	vector <std::string> strlist;
+			int size = str.size();
+			char *input = new char[size+1];
+			strcpy(input, str.c_str());
+			char *token = strtok(input, delim);
+			while (token != NULL) {
+				strlist.push_back(token);
+				token = strtok(NULL, delim);
+			}
+			delete []input;
+			return strlist;
+}
+
+int str2int(const string &str)
+{
+	stringstream stream(str);  
+	int a = 0;
+	stream >> a;
+	return a;
+}
 
 int main()
 {
@@ -53,12 +79,44 @@ int main()
     cout<<pq.top().first<<endl;;
     pq.pop();
     */
+   /*
    int b=1;
    int c=2;
    vector<int> a ;
    a=vector<int>(b,c);
     cout<<a.at(0)<<endl<<a.at(1);
+    */
+    string line;
+		vector<string> str;
+
+    getline(cin,line);
+		line.erase(line.size()-1);
+		line.erase(0,1);
+		str =  stringsplit(line,", ");
+
+
+    //cout<<endl<<str2int(str.at(3)) + str2int(str.at(4))<<endl;
+   // cout<<endl<<str.size();
+    int a=111;
+    //string a=" p" ;
+    cout<<endl<<line+to_string(a);
+  
 
 
     return 0;
 }
+/*
+(purchase, 2)
+(NV603, 1)
+(NV604, 1) 
+(migration, 0)
+(0, A)
+(0, B)
+
+(purchase, 0)
+(migration, 0)
+(1) 
+(purchase, 0) 
+(migration, 0)
+(1, B)
+*/
