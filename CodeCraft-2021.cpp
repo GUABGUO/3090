@@ -166,32 +166,31 @@ public:
 		float vm_proportion = float(cpu)/float(ram);
 		vector<int> return_temp;
 
-    	priority_queue<pair<vector<int>, float>, vector<pair<vector<int>, float>>, cmp> server_queue;
-    	for(unordered_map<int,Server>::iterator it = server_current_.begin(); it!=server_current_.end(); it++)
+		if (0 == nodetype)
 		{
-			int server_id = (*it).first;
-			float server_proportion0 = (*it).second.proportion_[0];
-			float server_proportion1 = (*it).second.proportion_[1];
-			if (-1 != server_proportion0 && 0 != server_proportion0)
+		   	priority_queue<pair<vector<int>, float>, vector<pair<vector<int>, float>>, cmp> server_queue;
+  		  	for(unordered_map<int,Server>::iterator it = server_current_.begin(); it!=server_current_.end(); it++)
 			{
-				vector<int> temp0;
-				temp0.push_back(server_id);
-				temp0.push_back(0);
-				float proportion0 = fabs(vm_proportion - server_proportion0);
-				server_queue.push(make_pair(temp0,server_proportion0));
-
+				int server_id = (*it).first;
+				float server_proportion0 = (*it).second.proportion_[0];
+				float server_proportion1 = (*it).second.proportion_[1];
+				if (-1 != server_proportion0 && 0 != server_proportion0)
+				{
+					vector<int> temp0;
+					temp0.push_back(server_id);
+					temp0.push_back(0);
+					float proportion0 = fabs(vm_proportion - server_proportion0);
+					server_queue.push(make_pair(temp0,proportion0));
+				}
 				if (-1 != server_proportion1 && 0 != server_proportion1)
 				{
 					vector<int> temp1;
 					temp1.push_back(server_id);
 					temp1.push_back(1);
 					float proportion1 = fabs(vm_proportion - server_proportion1);
-					server_queue.push(make_pair(temp1,server_proportion1));
+					server_queue.push(make_pair(temp1,proportion1));
 				}
 			}
-		}
-		if (0 == nodetype)
-		{
 			while (1)
 			{
 				int server_id = server_queue.top().first.at(0);
@@ -213,9 +212,22 @@ public:
 		}
 		else if (1 == nodetype)
 		{
+		   	priority_queue<pair<int, float>, vector<pair<int, float>>, cmp> server_queue;
+  		  	for(unordered_map<int,Server>::iterator it = server_current_.begin(); it!=server_current_.end(); it++)
+			{
+				int server_id = (*it).first;
+				float server_proportion0 = (*it).second.proportion_[0];
+				float server_proportion1 = (*it).second.proportion_[1];
+				if (-1 != server_proportion0 && 0 != server_proportion0 && -1 != server_proportion1 && 0 != server_proportion1)
+				{
+					//
+					float proportion0 = 0.5*fabs(vm_proportion - server_proportion0) +  0.5*fabs(vm_proportion - server_proportion1) + fabs(server_proportion0 - server_proportion1);
+					server_queue.push(make_pair(server_id,proportion0));
+				}
+			}
 			while (1)
 			{
-				int server_id = server_queue.top().first.at(0);
+				int server_id = server_queue.top().first;
 				int server_cpu0 = searchdata(server_id).cpu_left_[0];
 				int server_ram0 = searchdata(server_id).ram_left_[0];
 				int server_cpu1 = searchdata(server_id).cpu_left_[1];
@@ -381,7 +393,6 @@ public:
 
 
 /*---------------------------------------------------------------------------------*/
-/*---------------------------------------------------------------------------------*/
 vector <string> stringsplit(const string &str, const char *delim)
 {
 	vector <std::string> strlist;
@@ -407,6 +418,8 @@ int str2int(const string &str)
 }
 
 
+/*---------------------------------------------------------------------------------*/
+
 int main(int argc, char** argv)
 {
 	ServerInfo server_info;
@@ -420,11 +433,7 @@ int main(int argc, char** argv)
 	queue<string> buy_out;
 	queue<string> migration_out;
 	queue<string> deploy_out;
-	string left = "(";
-	string middle = ", ";
-	string right = ")";
-	string wordA = "A";
-	string wordB = "B";
+
 
 	int server_num;
 	cin >> server_num;
@@ -459,6 +468,7 @@ int main(int argc, char** argv)
 		vm_info.insertdata(type, cpu, ram, nodetype);
 	}
 	
+	/*
 	//2. 购买初始服务器
 	//购买策略未定
 	{
@@ -472,6 +482,7 @@ int main(int argc, char** argv)
 		//string str_temp = "("
 		//buy_out.push()
 	}
+	*/
 
 	//3. 每天进行处理
 	int day;
@@ -497,16 +508,16 @@ int main(int argc, char** argv)
 				int vm_id = str2int(str.at(2));
 
 				//if ( 需要购买 策略未定)
-				/*
 				{
-					string type = "server type";
-					int cpu = server_info.searchdata(type).at(0);
-					int ram = server_info.searchdata(type).at(1);
-					int buycost = server_info.searchdata(type).at(2);
-					int runcost = server_info.searchdata(type).at(3);
-					server_current.buyserver(type,cpu,ram,buycost,runcost);
+					string buy_type = "server type";
+					int cpu = server_info.searchdata(buy_type).at(0);
+					int ram = server_info.searchdata(buy_type).at(1);
+					int buycost = server_info.searchdata(buy_type).at(2);
+					int runcost = server_info.searchdata(buy_type).at(3);
+					server_current.buyserver(buy_type,cpu,ram,buycost,runcost);
+
+					buy_out.push(buy_type);
 				}
-				*/
 
 				//进行部署 
 				int cpu = vm_info.searchdata(type).at(0);
@@ -523,16 +534,16 @@ int main(int argc, char** argv)
 				{
 					if (0 == nodeplace)
 					{
-						out = left + to_string(server_id) + middle + wordA + right;
+						out = string("(") + to_string(server_id) + string(", A)");
 					}
 					else if (1 == nodeplace)
 					{
-						out = left + to_string(server_id) + middle + wordB + right;
+						out = string("(") + to_string(server_id) + string(", B)");
 					}
 				}
 				else if (1 == nodetype)
 				{
-					out = left + to_string(server_id) + right;
+					out = string("(") + to_string(server_id) + string(")");
 				}
 				deploy_out.push(out);
 
@@ -553,6 +564,21 @@ int main(int argc, char** argv)
 		}
 
 		//3.3 输出
+		// 购买信息
+		cout << string("(purchase, ") + to_string(buy_out.size()) + string(")");
+		fflush(stdout);
+		while ( !buy_out.empty())
+		{
+			cout << string("(") + buy_out.front() + string(", 1)");
+			fflush(stdout);
+			buy_out.pop();
+		}
+
+		// 迁移信息
+		cout << string("(migration, 0)");
+		fflush(stdout);
+
+		// 部署信息
 		while ( !deploy_out.empty() )
 		{
 			cout << deploy_out.front() <<endl;

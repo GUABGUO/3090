@@ -85,7 +85,6 @@ int main()
    vector<int> a ;
    a=vector<int>(b,c);
     cout<<a.at(0)<<endl<<a.at(1);
-    */
     string line;
 		vector<string> str;
 
@@ -101,6 +100,8 @@ int main()
     //string a=" p" ;
     cout<<endl<<line+to_string(a);
   
+    */
+   cout << string("aa")+string("11");
 
 
     return 0;
@@ -112,6 +113,7 @@ int main()
 (migration, 0)
 (0, A)
 (0, B)
+
 
 (purchase, 0)
 (migration, 0)
