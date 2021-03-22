@@ -78,13 +78,11 @@ int main()
     pq.pop();
     cout<<pq.top().first<<endl;;
     pq.pop();
-    */
-   /*
    int b=1;
    int c=2;
-   vector<int> a ;
-   a=vector<int>(b,c);
-    cout<<a.at(0)<<endl<<a.at(1);
+    cin >> b;
+    cin.ignore(100, '\n');
+    cout<<b;
     string line;
 		vector<string> str;
 
@@ -93,7 +91,8 @@ int main()
 		line.erase(0,1);
 		str =  stringsplit(line,", ");
 
-
+    */
+/*
     //cout<<endl<<str2int(str.at(3)) + str2int(str.at(4))<<endl;
    // cout<<endl<<str.size();
     int a=111;
@@ -101,9 +100,46 @@ int main()
     cout<<endl<<line+to_string(a);
   
     */
-   cout << string("aa")+string("11");
+   /*
+   multimap<char, int> m {
+            {'a', 1},
+            {'a', 2},
+            {'b', 3},
+            {'b', 4},
+            {'c', 4},
+            {'d', 5}
+         };
+   auto it = m.upper_bound('a');
+   cout << "Upper bound is" << endl;
+   cout << it->first << " = " << it->second << endl;
+   it++;
+   cout << it->first << " = " << it->second << endl;
+   it++;
+   cout << it->first << " = " << it->second << endl;
+  vector<int> a;
+  a.push_back(1);
+  a.push_back(2);
+  auto it = a.end();
+  cout<<(*(it));
 
+   */
 
+    multimap<float, string> server;
+
+    server.emplace(3, "b");
+    server.emplace(4, "c");
+    server.emplace(5, "e");
+
+    auto it =server.lower_bound(1);
+      if( it == server.end()){
+        it--;
+      cout << (*it).second;
+      }
+      if( it == server.begin())
+      {
+      cout << (*it).second;
+      }
+      cout << (*it).second;
     return 0;
 }
 /*
