@@ -12,6 +12,8 @@
 
 using namespace std;
 
+//server容量阈值
+const float const_flag = 0.7;
 //Server information
 class ServerInfo
 {
@@ -48,47 +50,30 @@ public:
 		return value((*it).second.at(0),(*it).second.at(1),(*it).second.at(2),(*it).second.at(3));
 	}
 
-	// 选择与虚拟机比例最匹配的服务器类型
-	string chooseserver(int vm_cpu, int vm_ram) {
-		string server_type;
-		float vm_proportion = float(vm_cpu)/float(vm_ram);
-
-		//前向迭代器
-		auto it_upper = proporition_server_.upper_bound(vm_proportion);
-		if( it_upper == proporition_server_.end()){
-			it_upper--;
-		}
-		string server_type1 = (*it_upper).second;
-		float server_proporiton1 = (*it_upper).first;
-		while (searchdata(server_type1).at(0) < vm_cpu || searchdata(server_type1).at(1) < vm_ram)
+	//选择服务器
+	vector<string> chooseserver()
+	{	
+		int cpu = 0;
+		int ram = 0;
+		string type1;
+		string type2;
+		for(auto it = server_info_.begin(); it != server_info_.end(); it++)
 		{
-			it_upper++;
-			server_type1 = (*it_upper).second;
-			server_proporiton1 = (*it_upper).first;
-		}
-
-		//反向迭代器
-		auto it_lower = proporition_server_.lower_bound(vm_proportion);
-		if( it_lower == proporition_server_.end()){
-			it_lower--;
-		}
-		string server_type2 = (*it_lower).second;
-		float server_proporiton2 = (*it_lower).first;
-		while (searchdata(server_type2).at(0) < vm_cpu || searchdata(server_type2).at(1) < vm_ram)
-		{
-			it_lower--;
-			server_type2 = (*it_lower).second;
-			server_proporiton2 = (*it_lower).first;
-		}
-
-		if(fabs(server_proporiton1 - vm_proportion) < fabs(server_proporiton2 - vm_proportion)) {
-			server_type = server_type1;
-		}
-		else {
-			server_type = server_type2;
-		}
-		
-		return server_type;
+			if ((*it).second.at(0) > cpu)
+			{
+				cpu = (*it).second.at(0);
+				type1 = (*it).first;
+			}
+			if ((*it).second.at(1) > ram)
+			{
+				ram = (*it).second.at(1);
+				type2 = (*it).first;
+			}
+		} 
+		vector<string> temp;
+		temp.push_back(type1);
+		temp.push_back(type2);
+		return temp;
 	}
 };
 
@@ -138,6 +123,7 @@ public:
 	int ram_left_[2];
 	float proportion_[2];
 	float proportion_all_;
+	float iffull;
 
 	Server(string type, int cpu, int ram, int buycost, int runcost)
 	{
@@ -153,6 +139,7 @@ public:
 		proportion_[0] = float(cpu_left_[0])/float(ram_left_[0]);
 		proportion_[1] = float(cpu_left_[1])/float(ram_left_[1]);
 		proportion_all_ = 0.5*(proportion_[0] + proportion_[1]);
+		iffull = 0.5*(float(cpu_left_[0] + cpu_left_[1]) / float(cpu_)) + 0.5*(float(ram_left_[0] + ram_left_[1]) / float(ram_));
 	}
 };
 
@@ -160,28 +147,50 @@ public:
 class ServerCurrent
 {
 private:
+
+	// 红黑树对服务器节点按匹配度排序, key：proporiton, value：id
 	// 哈希表存储当前服务器信息，key：id，value：Server对象
 	unordered_map< int, Server > server_current_;
-	// 红黑树对服务器节点按匹配度排序, key：proporiton, value：id
 	//float proportion = 0.5*(server_proportion0 + server_proportion1)
 	multimap< float, int > proporition_server_double_;
 	// 红黑树对服务器节点按cpu/ram排序, key：proporiton, value：id node
 	multimap< float, vector<int> > proporition_server_single_;
+	// 存放以接近存满的服务器
+	unordered_map< int, float> server_full_;
 	// id
+	int id = 0;
 
 public:
-
-	int id = 0;
 	// 查找服务器信息
 	Server searchdata(int server_id)
 	{
 		auto it = server_current_.find(server_id);
 		return (*it).second;
 	}
+	//求和
+	vector<int> leftsum()
+	{
+		int cpu = 0;
+		int ram = 0;
+		if (!server_current_.empty())
+		{
+			for (auto it = server_current_.begin(); it != server_current_.end(); it++)
+			{
+				cpu = cpu + (*it).second.cpu_left_[0] + (*it).second.cpu_left_[1]; 
+				ram = ram + (*it).second.ram_left_[0] + (*it).second.ram_left_[1]; 
+			}
+		}
+		vector<int> temp;
+		temp.push_back(cpu);
+		temp.push_back(ram);
+		return temp;
+	}
+
 	//买服务器
-	int buyserver(string type, int cpu, int ram, int buycost, int runcost)
+	void buyserver(string type, int cpu, int ram, int buycost, int runcost)
 	{
 		server_current_.emplace(id,Server(type, cpu, ram, buycost, runcost));
+		//cout << "server num = "<<server_current_.size()<<endl;
 
 		vector<int> temp0;
 		temp0.push_back(id);
@@ -194,18 +203,28 @@ public:
 		proporition_server_single_.emplace(proportion, temp1);
 		proporition_server_double_.emplace(proportion, id);
 		id++;
-		return (id-1);
 	}
 
 	//选择要部署的服务器
-	vector<int> deployserver(int vm_cpu, int vm_ram, int vm_nodetype, string buy_type, int buy_cpu, int buy_ram, int buycost, int runcost)
+	vector<int> chooseserver(int vm_cpu, int vm_ram, int vm_nodetype)
 	{
 		float vm_proportion = float(vm_cpu)/float(vm_ram);
 		vector<int> return_temp;
-		//初始购买
-		if (id == 0){
-			buyserver(buy_type, buy_cpu, buy_ram, buycost, runcost);
+		/*
+		cout<<endl<<"--------"<<endl;
+		cout<<"single:"<<endl;
+		for (auto ite = proporition_server_single_.begin(); ite != proporition_server_single_.end() ; ite++)
+		{
+			cout<<(*ite).second.at(0)<<"-"<<(*ite).first<<"  ";
 		}
+		cout<<endl<<"double:"<<endl;
+		for (auto ite = proporition_server_double_.begin(); ite != proporition_server_double_.end() ; ite++)
+		{
+			cout<<(*ite).second<<"-"<<(*ite).first<<"  ";
+		}
+		cout<<endl<<endl<<"proportion = "<<vm_proportion<<endl;
+		cout<<endl<<"--------"<<endl;
+		*/
 		//单节点选择
 		if ( 0 == vm_nodetype) {
 			int server_cpu;
@@ -228,10 +247,13 @@ public:
 				}
 				server_id1 = (*it_upper).second.at(0);
 				server_location1 = (*it_upper).second.at(1);
+				float server_proporiton1 = (*it_upper).first;
+				server_cpu = searchdata(server_id1).cpu_left_[server_location1];
+				server_ram = searchdata(server_id1).ram_left_[server_location1];
 			}
 
 			//反向迭代器
-			auto it_lower = proporition_server_single_.upper_bound(vm_proportion);
+			auto it_lower = proporition_server_single_.lower_bound(vm_proportion);
 			if (it_lower == proporition_server_single_.end()){
 				it_lower--;
 			}
@@ -248,16 +270,15 @@ public:
 				it_lower--;
 				server_id2 = (*it_lower).second.at(0);
 				server_location2 = (*it_lower).second.at(1);
-
+				server_proporiton2 = (*it_lower).first;
+				server_cpu = searchdata(server_id2).cpu_left_[server_location2];
+				server_ram = searchdata(server_id2).ram_left_[server_location2];
 			}
 
-			//判断购买与部署
+			//部署
 			if (it_upper == proporition_server_single_.end()) {
 				if(it_lower == proporition_server_single_.begin()){
-					int id = buyserver(buy_type, buy_cpu, buy_ram, buycost, runcost);
-					return_temp.push_back(id);
-					return_temp.push_back(0);
-					return_temp.push_back(1);
+					cout <<endl<<"error"<<endl;
 				}
 				else if(it_lower != proporition_server_single_.begin()){
 					return_temp.push_back(server_id2);
@@ -306,10 +327,14 @@ public:
 				}
 				server_id1 = (*it_upper).second;
 				server_proporiton1 = (*it_upper).first;
+				server_cpu0 = searchdata(server_id1).cpu_left_[0];
+				server_ram0 = searchdata(server_id1).ram_left_[0];
+				server_cpu1 = searchdata(server_id1).cpu_left_[1];
+				server_ram1 = searchdata(server_id1).ram_left_[1];
 			}	
 
 			//反向迭代器
-			auto it_lower = proporition_server_double_.upper_bound(vm_proportion);
+			auto it_lower = proporition_server_double_.lower_bound(vm_proportion);
 			if (it_lower == proporition_server_double_.end()){
 				it_lower--;
 			}
@@ -327,15 +352,16 @@ public:
 				it_lower--;
 				server_id2 = (*it_lower).second;
 				server_proporiton2 = (*it_lower).first;
+				server_cpu0 = searchdata(server_id2).cpu_left_[0];
+				server_ram0 = searchdata(server_id2).ram_left_[0];
+				server_cpu1 = searchdata(server_id2).cpu_left_[1];
+				server_ram1 = searchdata(server_id2).ram_left_[1];
 			}	
 
 			//判断购买与部署
 			if (it_upper == proporition_server_double_.end()) {
 				if(it_lower == proporition_server_double_.begin()){
-					int id = buyserver(buy_type, buy_cpu, buy_ram, buycost, runcost);
-					return_temp.push_back(id);
-					return_temp.push_back(0);
-					return_temp.push_back(1);
+					cout << "error"<<endl;
 				}
 				else if(it_lower != proporition_server_double_.begin()){
 					return_temp.push_back(server_id2);
@@ -363,46 +389,78 @@ public:
 	}
 	
 	//部署虚拟机 更新当前服务器资源 维护两颗树
-	void deployvm(int server_id, int cpu, int ram, int nodetype, int nodeplace)
+	void deployvm(int server_id, int nodeplace, int cpu, int ram, int nodetype)
 	{
 		auto it = server_current_.find(server_id);
+		//单节点虚拟机
 		if (0 == nodetype) {
-			if (0 == nodeplace) {
-				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu;
-				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram;
-				if (0 == (*it).second.ram_left_[0] || 0 == (*it).second.cpu_left_[0]) {
-					(*it).second.proportion_[0] = -1;
-					(*it).second.proportion_all_ = -1;
+			//deldete
+			auto iter1 = proporition_server_single_.find((*it).second.proportion_[nodeplace]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[nodeplace]); k++, iter1++) {
+				if (server_id == (*iter1).second.at(0) && nodeplace == (*iter1).second.at(1)){
+					proporition_server_single_.erase(iter1);
+					break;
 				}
-				else {
-					(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
-					(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
+			}
+			auto iter2 = proporition_server_double_.find((*it).second.proportion_all_);
+			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter2++) {
+				if (server_id == (*iter2).second){
+					proporition_server_double_.erase(iter2);
+					break;
 				}
+			}
+
+			//add
+			(*it).second.cpu_left_[nodeplace] = (*it).second.cpu_left_[nodeplace] - cpu;
+			(*it).second.ram_left_[nodeplace] = (*it).second.ram_left_[nodeplace] - ram;
+			if (0 == (*it).second.ram_left_[nodeplace] || 0 == (*it).second.cpu_left_[nodeplace]) {
+				(*it).second.proportion_[nodeplace] = -1;
+				(*it).second.proportion_all_ = -1;
+			}
+			else {
+				(*it).second.proportion_[nodeplace] = float((*it).second.cpu_left_[nodeplace])/float((*it).second.ram_left_[nodeplace]);
+				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
+			}
+
+			if (  > const_flag){
+
+			}
+			else{
 				vector<int> temp;
 				temp.push_back(server_id);
-				temp.push_back(0);
-				proporition_server_single_.emplace((*it).second.proportion_[0], temp);
-				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			temp.push_back(nodeplace);
+			proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp);
+			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
 			}
-			else if (1 == nodeplace) {
-				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu;
-				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] - ram;
-				if (0 == (*it).second.ram_left_[1] || 0 == (*it).second.cpu_left_[1]) {
-					(*it).second.proportion_[1] = -1;
-					(*it).second.proportion_all_ = -1;
-				}
-				else {
-					(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
-					(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
-				}
-				vector<int> temp;
-				temp.push_back(server_id);
-				temp.push_back(1);
-				proporition_server_single_.emplace((*it).second.proportion_[1], temp);
-				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
-			}
+
+
+	
 		}
+		//双节点虚拟机
 		else if (1 == nodetype) {
+			//delete
+			auto iter1 = proporition_server_single_.find((*it).second.proportion_[0]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[0]); k++, iter1++) {
+				if (server_id == (*iter1).second.at(0) && 0 == (*iter1).second.at(1)){
+					iter1 = proporition_server_single_.erase(iter1);
+					break;
+				}
+			}
+			auto iter2 = proporition_server_single_.find((*it).second.proportion_[1]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[1]); k++, iter2++) {
+				if (server_id == (*iter2).second.at(0) && 1 == (*iter2).second.at(1)){
+					iter2 = proporition_server_single_.erase(iter2);
+					break;
+				}
+			}
+			auto iter3 = proporition_server_double_.find((*it).second.proportion_all_);
+			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter3++) {
+				if (server_id == (*iter3).second){
+					iter3 = proporition_server_double_.erase(iter3);
+					break;
+				}
+			}
+			//add
 			(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] - cpu/2;
 			(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] - cpu/2;
 			(*it).second.ram_left_[0] = (*it).second.ram_left_[0] - ram/2;
@@ -424,15 +482,16 @@ public:
 				(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
 			}
-				vector<int> temp0;
-				temp0.push_back(server_id);
-				temp0.push_back(0);
-				proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
-				vector<int> temp1;
-				temp1.push_back(server_id);
-				temp1.push_back(1);
-				proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
-				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+
+			vector<int> temp0;
+			temp0.push_back(server_id);
+			temp0.push_back(0);
+			proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
+			vector<int> temp1;
+			temp1.push_back(server_id);
+			temp1.push_back(1);
+			proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
+			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
 		}
 	}
 
@@ -440,75 +499,61 @@ public:
 	void deletedata(int server_id, int cpu, int ram, int nodetype, int nodeplace)
 	{
 		auto it = server_current_.find(server_id);
+		//单节点虚拟机
 		if (0 == nodetype) {
-			if (0 == nodeplace) {
-				proporition_server_single_.erase(proporition_server_single_.find((*it).second.proportion_[0]));
-				proporition_server_double_.erase(proporition_server_double_.find((*it).second.proportion_all_));
-
-				(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu;
-				(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram;
-				(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
-				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
-
-				/*
-  			  	for(auto iter = proporition_server_single_.begin(); iter!=proporition_server_single_.end(); iter++)
-				{
-					if (server_id == (*iter).second.at(0) && 0 == (*iter).second.at(1)){
-						proporition_server_single_.erase(iter);
-						break;
-					}
+			//delete
+			auto iter1 = proporition_server_single_.find((*it).second.proportion_[nodeplace]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[nodeplace]); k++, iter1++) {
+				if (server_id == (*iter1).second.at(0) && nodeplace == (*iter1).second.at(1)){
+					proporition_server_single_.erase(iter1);
+					break;
 				}
-  			  	for(auto iter = proporition_server_double_.begin(); iter!=proporition_server_double_.end(); iter++)
-				{
-					if (server_id == (*iter).second){
-						proporition_server_double_.erase(iter);
-						break;
-					}
-				}
-				*/
-				vector<int> temp0;
-				temp0.push_back(server_id);
-				temp0.push_back(0);
-				proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
-				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
 			}
-			else if (1 == nodeplace) {
-				proporition_server_single_.erase(proporition_server_single_.find((*it).second.proportion_[1]));
-				proporition_server_double_.erase(proporition_server_double_.find((*it).second.proportion_all_));
-
-				(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu;
-				(*it).second.ram_left_[1] = (*it).second.ram_left_[1] + ram;
-				(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
-				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
-
-				/*
-  			  	for(auto iter = proporition_server_single_.begin(); iter!=proporition_server_single_.end(); iter++)
-				{
-					if (server_id == (*iter).second.at(0) && 1 == (*iter).second.at(1)){
-						proporition_server_single_.erase(iter);
-						break;
-					}
+			auto iter2 = proporition_server_double_.find((*it).second.proportion_all_);
+			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter2++) {
+				if (server_id == (*iter2).second){
+					proporition_server_double_.erase(iter2);
+					break;
 				}
-  			  	for(auto iter = proporition_server_double_.begin(); iter!=proporition_server_double_.end(); iter++)
-				{
-					if (server_id == (*iter).second){
-						proporition_server_double_.erase(iter);
-						break;
-					}
-				}
-				*/
-				vector<int> temp1;
-				temp1.push_back(server_id);
-				temp1.push_back(1);
-				proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
-				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
 			}
+
+			(*it).second.cpu_left_[nodeplace] = (*it).second.cpu_left_[nodeplace] + cpu;
+			(*it).second.ram_left_[nodeplace] = (*it).second.ram_left_[nodeplace] + ram;
+			(*it).second.proportion_[nodeplace] = float((*it).second.cpu_left_[nodeplace])/float((*it).second.ram_left_[nodeplace]);
+			(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
+
+			vector<int> temp0;
+			temp0.push_back(server_id);
+			temp0.push_back(nodeplace);
+			proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp0);
+			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			
 		}
+		//双节点虚拟机
 		else if (1 == nodetype) {
-			proporition_server_single_.erase(proporition_server_single_.find((*it).second.proportion_[0]));
-			proporition_server_single_.erase(proporition_server_single_.find((*it).second.proportion_[1]));
-			proporition_server_double_.erase(proporition_server_double_.find((*it).second.proportion_all_));
-
+			//delete
+			auto iter1 = proporition_server_single_.find((*it).second.proportion_[0]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[0]); k++, iter1++) {
+				if (server_id == (*iter1).second.at(0) && 0 == (*iter1).second.at(1)){
+					proporition_server_single_.erase(iter1);
+					break;
+				}
+			}
+			auto iter2 = proporition_server_single_.find((*it).second.proportion_[1]);
+			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[1]); k++, iter2++) {
+				if (server_id == (*iter2).second.at(0) && 1 == (*iter2).second.at(1)){
+					proporition_server_single_.erase(iter2);
+					break;
+				}
+			}
+			auto iter3 = proporition_server_double_.find((*it).second.proportion_all_);
+			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter3++) {
+				if (server_id == (*iter3).second){
+					proporition_server_double_.erase(iter3);
+					break;
+				}
+			}
+			//add
 			(*it).second.cpu_left_[0] = (*it).second.cpu_left_[0] + cpu/2;
 			(*it).second.cpu_left_[1] = (*it).second.cpu_left_[1] + cpu/2;
 			(*it).second.ram_left_[0] = (*it).second.ram_left_[0] + ram/2;
@@ -516,30 +561,7 @@ public:
 			(*it).second.proportion_[0] = float((*it).second.cpu_left_[0])/float((*it).second.ram_left_[0]);
 			(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 			(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
-			
-			/*
-  		  	for(auto iter = proporition_server_single_.begin(); iter!=proporition_server_single_.end(); iter++)
-			{
-				if (server_id == (*iter).second.at(0) && 0 == (*iter).second.at(1)){
-					proporition_server_single_.erase(iter);
-					break;
-				}
-			}  		  
-			for(auto iter = proporition_server_single_.begin(); iter!=proporition_server_single_.end(); iter++)
-			{
-				if (server_id == (*iter).second.at(0) && 1 == (*iter).second.at(1)){
-					proporition_server_single_.erase(iter);
-					break;
-				}
-			}
-  		  	for(auto iter = proporition_server_double_.begin(); iter!=proporition_server_double_.end(); iter++)
-			{
-				if (server_id == (*iter).second){
-					proporition_server_double_.erase(iter);
-					break;
-				}
-			}
-			*/
+
 			vector<int> temp0;
 			temp0.push_back(server_id);
 			temp0.push_back(0);
@@ -605,7 +627,6 @@ public:
 };
 
 
-
 /*---------------------------------------------------------------------------------*/
 vector <string> stringsplit(const string &str, const char *delim)
 {
@@ -643,13 +664,14 @@ int main(int argc, char** argv)
 
 	string line;
 	vector<string> str;
-	queue<string> buy_out;
+	queue<string> buy_out1;
+	queue<string> buy_out2;
 	queue<string> migration_out;
 	queue<string> deploy_out;
+	queue<string> deploy_in;
 
-   	ofstream ccout;
-    ccout.open ("output.txt");
-
+  // 	ofstream ccout;
+  //  ccout.open ("output.txt");
 
 	ifstream ccin("training-1.txt");
 
@@ -670,7 +692,6 @@ int main(int argc, char** argv)
 		int runcost = str2int(str.at(4));
 		server_info.insertdata(type, cpu, ram, buycost, runcost);
 	}
-
 	getline(ccin, line);
 	int vm_num = str2int(line);
 	for (size_t i = 0; i < vm_num; i++)
@@ -687,36 +708,89 @@ int main(int argc, char** argv)
 		vm_info.insertdata(type, cpu, ram, nodetype);
 	}
 	
-	/*
-	//2. 购买初始服务器
-	//购买策略未定
-	{
-		string type = "host2D54I";
-		int cpu = server_info.searchdata(type).at(0);
-		int ram = server_info.searchdata(type).at(1);
-		int buycost = server_info.searchdata(type).at(2);
-		int runcost = server_info.searchdata(type).at(3);
-		server_current.buyserver(type,cpu,ram,buycost,runcost);
+	vector<string> temp_type = server_info.chooseserver();
+	string type1 = temp_type.at(0);
+	int cpu1 = server_info.searchdata(type1).at(0);
+	int ram1 = server_info.searchdata(type1).at(1);
+	cout<< cpu1<<endl;
+	cout<< ram1<<endl;
+	cout<< float(cpu1)/float(ram1)<<endl;
+	int buycost1 = server_info.searchdata(type1).at(2);
+	int runcost1 = server_info.searchdata(type1).at(3);
 
-		//string str_temp = "("
-		//buy_out.push()
-	}
-	*/
-
+	string type2 = temp_type.at(1);
+	int cpu2 = server_info.searchdata(type2).at(0);
+	int ram2 = server_info.searchdata(type2).at(1);
+	cout<< cpu2<<endl;
+	cout<< ram2<<endl;
+	cout<< float(cpu2)/float(ram2)<<endl;
+	int buycost2 = server_info.searchdata(type2).at(2);
+	int runcost2 = server_info.searchdata(type2).at(3);
 	//3. 每天进行处理
 	getline(ccin, line);
 	int day = str2int(line);
 	for (size_t i = 0; i < day; i++)
 	{
-		//3.1 迁移
-		//策略未定
-
-		//3.2 每条指令进行处理
+		cout<<"-------------"<<endl;
+		//3.1 扩容
+		int cpu_all = 0;
+		int ram_all = 0;
 		getline(ccin, line);
 		int command = str2int(line);
 		for (size_t j = 0; j < command; j++)
 		{
 		    getline(ccin,line);
+			deploy_in.push(line);
+
+			line.erase(line.size()-1);
+			line.erase(0,1);
+			str = stringsplit(line,", ");
+			if (3 == str.size())
+			{		
+				string vm_type = str.at(1);
+				int vm_cpu = vm_info.searchdata(vm_type).at(0);
+				int vm_ram = vm_info.searchdata(vm_type).at(1);
+				cpu_all = cpu_all + vm_cpu;
+				ram_all = ram_all + vm_ram;
+			}
+		}
+		vector<int> temp_sum = server_current.leftsum();
+		cpu_all = cpu_all - temp_sum.at(0);
+		ram_all = ram_all - temp_sum.at(1);
+		int buy_num1 =  ceil(float(cpu_all)/float(cpu1));
+		int buy_num2 =  ceil(float(ram_all)/float(ram2));
+
+		cout<<"cpu_buy= "<<cpu_all<<endl;
+		cout<<"ram_buy= "<<ram_all<<endl;
+		cout<<"cpu_left= "<<temp_sum.at(0)<<endl;
+		cout<<"ram_left= "<<temp_sum.at(0)<<endl;
+		cout<<"num1 = "<<buy_num1<<endl;
+		cout<<"num1 = "<<buy_num2<<endl;
+
+		if (buy_num1 < 6){
+			buy_num1 = 6;
+		}
+		if (buy_num2 < 6){
+			buy_num2 = 6;
+		}
+		for (size_t j = 0; j < buy_num1; j++)
+		{
+			server_current.buyserver(type1,cpu1,ram1,buycost1,runcost1);
+			buy_out1.push(type1);
+		}
+		for (size_t j = 0; j < buy_num2; j++)
+		{
+			server_current.buyserver(type2,cpu2,ram2,buycost2,runcost2);
+			buy_out2.push(type2);
+		}
+		
+		//3.2 迁移
+
+		//3.3 部署 
+		for (size_t j = 0; j < command; j++)
+		{
+			line = deploy_in.front();
+			deploy_in.pop();
 			line.erase(line.size()-1);
 			line.erase(0,1);
 			str = stringsplit(line,", ");
@@ -728,85 +802,80 @@ int main(int argc, char** argv)
 				int vm_cpu = vm_info.searchdata(vm_type).at(0);
 				int vm_ram = vm_info.searchdata(vm_type).at(1);
 				int vm_nodetype = vm_info.searchdata(vm_type).at(2);
-				string buy_type = server_info.chooseserver(vm_cpu, vm_ram);
-
-				int buy_cpu = server_info.searchdata(buy_type).at(0);
-				int buy_ram = server_info.searchdata(buy_type).at(1);
-				int buycost = server_info.searchdata(buy_type).at(2);
-				int runcost = server_info.searchdata(buy_type).at(3);
-
-
-				vector<int> temp = server_current.deployserver(vm_cpu, vm_ram, vm_nodetype, buy_type, buy_cpu, buy_ram, buycost, runcost);
-				if (1 == server_current.id) {
-					buy_out.push(buy_type);
-				}
-
-				if( 3 == temp.size()) {
-					buy_out.push(buy_type);
-				}
+				vector<int> temp = server_current.chooseserver(vm_cpu, vm_ram, vm_nodetype);
 				int server_id = temp.at(0);
 				int nodeplace = temp.at(1);
-				server_current.deployvm(server_id, vm_cpu, vm_ram, vm_nodetype, nodeplace);
+				//cout<<"id = "<<server_id<<endl;
+				//cout<<"flag = "<<nodeplace<<endl;
+				//cout<<"type = "<<vm_nodetype<<endl;
+				server_current.deployvm(server_id, nodeplace, vm_cpu, vm_ram, vm_nodetype);
 				vm_current.deployvm(vm_id, server_id, nodeplace, vm_type, vm_cpu, vm_ram, vm_nodetype);
 
 				string out ;
-				if (0 == vm_nodetype)
-				{
-					if (0 == nodeplace)
-					{
+				if (0 == vm_nodetype) {
+					if (0 == nodeplace) {
 						out = string("(") + to_string(server_id) + string(", A)");
 					}
-					else if (1 == nodeplace)
-					{
+					else if (1 == nodeplace) {
 						out = string("(") + to_string(server_id) + string(", B)");
 					}
 				}
-				else if (1 == vm_nodetype)
-				{
+				else if (1 == vm_nodetype) {
 					out = string("(") + to_string(server_id) + string(")");
 				}
 				deploy_out.push(out);
+				}
 
-			}
 			else if (2 == str.size())
 			{
 				int vm_id = str2int(str.at(1));
 
 				int server_id = vm_current.searchdata(vm_id).server_id_;
 				int nodeplace = vm_current.searchdata(vm_id).nodeplace_;
-				int cpu = vm_current.searchdata(vm_id).cpu_;
-				int ram = vm_current.searchdata(vm_id).ram_;
-				int nodetype = vm_current.searchdata(vm_id).nodetype_;
-				server_current.deletedata(server_id, cpu, ram, nodetype, nodeplace);
+				int vm_cpu = vm_current.searchdata(vm_id).cpu_;
+				int vm_ram = vm_current.searchdata(vm_id).ram_;
+				int vm_nodetype = vm_current.searchdata(vm_id).nodetype_;
+
+				//进行删除
+				server_current.deletedata(server_id, vm_cpu, vm_ram, vm_nodetype, nodeplace);
 				vm_current.deletevm(vm_id);
 				//vector<int>().swap(temp);
 			}
 		}
-
+		/*
 		//3.3 输出
 		// 购买信息
-		ccout << string("(purchase, ") + to_string(buy_out.size()) + string(")")<<endl;
+		cout << string("(purchase, ") + to_string(2) + string(")")<<endl;
 		fflush(stdout);
-		while ( !buy_out.empty())
-		{
-			ccout << string("(") + buy_out.front() + string(", 1)")<<endl;
+		if (!buy_out1.empty()){
+			cout << string("(") + buy_out1.front() + string(", ") + to_string(buy_out1.size()) + string(")")<<endl;
 			fflush(stdout);
-			buy_out.pop();
+		}
+		while ( !buy_out1.empty()){
+			buy_out1.pop();
+		}
+		if (!buy_out2.empty()){
+			cout << string("(") + buy_out2.front() + string(", ") + to_string(buy_out2.size()) + string(")")<<endl;
+			fflush(stdout);
+		}
+		while ( !buy_out2.empty()){
+			buy_out2.pop();
 		}
 
 		// 迁移信息
-		ccout << string("(migration, 0)")<<endl;
+		cout << string("(migration, 0)")<<endl;
 		fflush(stdout);
 
 		// 部署信息
 		while ( !deploy_out.empty() )
 		{
-			ccout << deploy_out.front() <<endl;
+			cout << deploy_out.front() <<endl;
 			fflush(stdout);
 			deploy_out.pop();
 		}
+		*/
 	}
-	ccout.close();
+	//ccout.close();
 
 	// TODO:read standard input
 	// TODO:process
