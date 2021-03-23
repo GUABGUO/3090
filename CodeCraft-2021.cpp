@@ -13,7 +13,7 @@
 using namespace std;
 
 //server容量阈值
-const float const_flag = 0.7;
+const float const_flag = 0.3;
 //Server information
 class ServerInfo
 {
@@ -224,7 +224,7 @@ public:
 		}
 		cout<<endl<<endl<<"proportion = "<<vm_proportion<<endl;
 		cout<<endl<<"--------"<<endl;
-		*/
+*/
 		//单节点选择
 		if ( 0 == vm_nodetype) {
 			int server_cpu;
@@ -278,6 +278,19 @@ public:
 			//部署
 			if (it_upper == proporition_server_single_.end()) {
 				if(it_lower == proporition_server_single_.begin()){
+		cout<<endl<<"--------"<<endl;
+		cout<<"single:"<<endl;
+		for (auto ite = proporition_server_single_.begin(); ite != proporition_server_single_.end() ; ite++)
+		{
+			cout<<(*ite).second.at(0)<<"-"<<(*ite).first<<"  ";
+		}
+		cout<<endl<<"double:"<<endl;
+		for (auto ite = proporition_server_double_.begin(); ite != proporition_server_double_.end() ; ite++)
+		{
+			cout<<(*ite).second<<"-"<<(*ite).first<<"  ";
+		}
+		cout<<endl<<endl<<"proportion = "<<vm_proportion<<endl;
+		cout<<endl<<"--------"<<endl;
 					cout <<endl<<"error"<<endl;
 				}
 				else if(it_lower != proporition_server_single_.begin()){
@@ -389,8 +402,9 @@ public:
 	}
 	
 	//部署虚拟机 更新当前服务器资源 维护两颗树
-	void deployvm(int server_id, int nodeplace, int cpu, int ram, int nodetype)
+	int deployvm(int server_id, int nodeplace, int cpu, int ram, int nodetype)
 	{
+		int isfull = 0;
 		auto it = server_current_.find(server_id);
 		//单节点虚拟机
 		if (0 == nodetype) {
@@ -422,15 +436,18 @@ public:
 				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
 			}
 
-			if (  > const_flag){
-
+			float iffull = 0.5*(float((*it).second.cpu_left_[0] + (*it).second.cpu_left_[1]) / float((*it).second.cpu_)) 
+					   	+ 0.5*(float((*it).second.ram_left_[0] + (*it).second.ram_left_[1]) / float((*it).second.ram_));
+			if ( iffull < const_flag){
+				server_full_.emplace(server_id, iffull);
+				isfull = 1;
 			}
 			else{
 				vector<int> temp;
 				temp.push_back(server_id);
-			temp.push_back(nodeplace);
-			proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp);
-			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+				temp.push_back(nodeplace);
+				proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp);
+				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
 			}
 
 
@@ -483,74 +500,94 @@ public:
 				(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
 			}
 
-			vector<int> temp0;
-			temp0.push_back(server_id);
-			temp0.push_back(0);
-			proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
-			vector<int> temp1;
-			temp1.push_back(server_id);
-			temp1.push_back(1);
-			proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
-			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			float iffull = 0.5*(float((*it).second.cpu_left_[0] + (*it).second.cpu_left_[1]) / float((*it).second.cpu_)) 
+					   	+ 0.5*(float((*it).second.ram_left_[0] + (*it).second.ram_left_[1]) / float((*it).second.ram_));
+			if ( iffull < const_flag){
+				server_full_.emplace(server_id, iffull);
+				isfull = 1;
+			}
+			else
+			{
+				vector<int> temp0;
+				temp0.push_back(server_id);
+				temp0.push_back(0);
+				proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
+				vector<int> temp1;
+				temp1.push_back(server_id);
+				temp1.push_back(1);
+				proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
+				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			}
 		}
+		return isfull;
 	}
 
 	//删除虚拟机 更新当前服务器资源 维护两棵树
-	void deletedata(int server_id, int cpu, int ram, int nodetype, int nodeplace)
+	void deletedata(int server_id, int cpu, int ram, int nodetype, int nodeplace, int isfull)
 	{
 		auto it = server_current_.find(server_id);
 		//单节点虚拟机
 		if (0 == nodetype) {
-			//delete
-			auto iter1 = proporition_server_single_.find((*it).second.proportion_[nodeplace]);
-			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[nodeplace]); k++, iter1++) {
-				if (server_id == (*iter1).second.at(0) && nodeplace == (*iter1).second.at(1)){
-					proporition_server_single_.erase(iter1);
-					break;
+			if (0 == isfull){
+				//delete
+				auto iter1 = proporition_server_single_.find((*it).second.proportion_[nodeplace]);
+				for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[nodeplace]); k++, iter1++) {
+					if (server_id == (*iter1).second.at(0) && nodeplace == (*iter1).second.at(1)){
+						proporition_server_single_.erase(iter1);
+						break;
+					}
+				}
+				auto iter2 = proporition_server_double_.find((*it).second.proportion_all_);
+				for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter2++) {
+					if (server_id == (*iter2).second){
+						proporition_server_double_.erase(iter2);
+						break;
+					}
 				}
 			}
-			auto iter2 = proporition_server_double_.find((*it).second.proportion_all_);
-			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter2++) {
-				if (server_id == (*iter2).second){
-					proporition_server_double_.erase(iter2);
-					break;
-				}
-			}
-
 			(*it).second.cpu_left_[nodeplace] = (*it).second.cpu_left_[nodeplace] + cpu;
 			(*it).second.ram_left_[nodeplace] = (*it).second.ram_left_[nodeplace] + ram;
 			(*it).second.proportion_[nodeplace] = float((*it).second.cpu_left_[nodeplace])/float((*it).second.ram_left_[nodeplace]);
 			(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
 
-			vector<int> temp0;
-			temp0.push_back(server_id);
-			temp0.push_back(nodeplace);
-			proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp0);
-			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
-			
+			float iffull = 0.5*(float((*it).second.cpu_left_[0] + (*it).second.cpu_left_[1]) / float((*it).second.cpu_)) 
+					   	+ 0.5*(float((*it).second.ram_left_[0] + (*it).second.ram_left_[1]) / float((*it).second.ram_));
+			if ( iffull < const_flag){
+				server_full_[server_id] = iffull;
+			}
+			else
+			{
+				vector<int> temp0;
+				temp0.push_back(server_id);
+				temp0.push_back(nodeplace);
+				proporition_server_single_.emplace((*it).second.proportion_[nodeplace], temp0);
+				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			}
 		}
 		//双节点虚拟机
 		else if (1 == nodetype) {
-			//delete
-			auto iter1 = proporition_server_single_.find((*it).second.proportion_[0]);
-			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[0]); k++, iter1++) {
-				if (server_id == (*iter1).second.at(0) && 0 == (*iter1).second.at(1)){
-					proporition_server_single_.erase(iter1);
-					break;
+			if (0 == isfull){
+				//delete
+				auto iter1 = proporition_server_single_.find((*it).second.proportion_[0]);
+				for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[0]); k++, iter1++) {
+					if (server_id == (*iter1).second.at(0) && 0 == (*iter1).second.at(1)){
+						proporition_server_single_.erase(iter1);
+						break;
+					}
 				}
-			}
-			auto iter2 = proporition_server_single_.find((*it).second.proportion_[1]);
-			for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[1]); k++, iter2++) {
-				if (server_id == (*iter2).second.at(0) && 1 == (*iter2).second.at(1)){
-					proporition_server_single_.erase(iter2);
-					break;
+				auto iter2 = proporition_server_single_.find((*it).second.proportion_[1]);
+				for (size_t k = 0; k < proporition_server_single_.count((*it).second.proportion_[1]); k++, iter2++) {
+					if (server_id == (*iter2).second.at(0) && 1 == (*iter2).second.at(1)){
+						proporition_server_single_.erase(iter2);
+						break;
+					}
 				}
-			}
-			auto iter3 = proporition_server_double_.find((*it).second.proportion_all_);
-			for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter3++) {
-				if (server_id == (*iter3).second){
-					proporition_server_double_.erase(iter3);
-					break;
+				auto iter3 = proporition_server_double_.find((*it).second.proportion_all_);
+				for (size_t k = 0; k < proporition_server_double_.count((*it).second.proportion_all_); k++, iter3++) {
+					if (server_id == (*iter3).second){
+						proporition_server_double_.erase(iter3);
+						break;
+					}
 				}
 			}
 			//add
@@ -562,15 +599,23 @@ public:
 			(*it).second.proportion_[1] = float((*it).second.cpu_left_[1])/float((*it).second.ram_left_[1]);
 			(*it).second.proportion_all_ = 0.5*((*it).second.proportion_[0] + (*it).second.proportion_[1]);
 
-			vector<int> temp0;
-			temp0.push_back(server_id);
-			temp0.push_back(0);
-			proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
-			vector<int> temp1;
-			temp1.push_back(server_id);
-			temp1.push_back(1);
-			proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
-			proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			float iffull = 0.5*(float((*it).second.cpu_left_[0] + (*it).second.cpu_left_[1]) / float((*it).second.cpu_)) 
+					   	+ 0.5*(float((*it).second.ram_left_[0] + (*it).second.ram_left_[1]) / float((*it).second.ram_));
+			if ( iffull < const_flag){
+				server_full_[server_id] = iffull;
+			}
+			else
+			{
+				vector<int> temp0;
+				temp0.push_back(server_id);
+				temp0.push_back(0);
+				proporition_server_single_.emplace((*it).second.proportion_[0], temp0);
+				vector<int> temp1;
+				temp1.push_back(server_id);
+				temp1.push_back(1);
+				proporition_server_single_.emplace((*it).second.proportion_[1], temp1);
+				proporition_server_double_.emplace((*it).second.proportion_all_, server_id);
+			}
 		}
 	}
 };
@@ -588,8 +633,9 @@ public:
 	int cpu_;
 	int ram_;
 	int nodetype_;
+	int isfull_;
 
-	VM(int server_id, int nodeplace, string type, int cpu, int ram, int nodetype)
+	VM(int server_id, int nodeplace, string type, int cpu, int ram, int nodetype, int isfull)
 	{
 		server_id_ = server_id;
 		nodeplace_ = nodetype;
@@ -597,6 +643,7 @@ public:
 		cpu_ = cpu;
 		ram_ = ram;
 		nodetype_ = nodetype;
+		isfull_ = isfull;
 		//
 	}
 
@@ -614,9 +661,9 @@ public:
 		return (*it).second;
 	}
 
-	void deployvm(int vm_id, int server_id, int nodeplace, string type, int cpu, int ram, int nodetype)
+	void deployvm(int vm_id, int server_id, int nodeplace, string type, int cpu, int ram, int nodetype, int isfull)
 	{
-		vm_current_.emplace(vm_id,VM(server_id, nodeplace, type, cpu, ram, nodetype));
+		vm_current_.emplace(vm_id,VM(server_id, nodeplace, type, cpu, ram, nodetype, isfull));
 	}
 
 	void deletevm(int vm_id)
@@ -731,7 +778,6 @@ int main(int argc, char** argv)
 	int day = str2int(line);
 	for (size_t i = 0; i < day; i++)
 	{
-		cout<<"-------------"<<endl;
 		//3.1 扩容
 		int cpu_all = 0;
 		int ram_all = 0;
@@ -755,24 +801,28 @@ int main(int argc, char** argv)
 			}
 		}
 		vector<int> temp_sum = server_current.leftsum();
-		cpu_all = cpu_all - temp_sum.at(0);
-		ram_all = ram_all - temp_sum.at(1);
-		int buy_num1 =  ceil(float(cpu_all)/float(cpu1));
-		int buy_num2 =  ceil(float(ram_all)/float(ram2));
-
-		cout<<"cpu_buy= "<<cpu_all<<endl;
-		cout<<"ram_buy= "<<ram_all<<endl;
+		cout<<"-------------"<<endl;
+		cout<<"cpu_add= "<<cpu_all<<endl;
+		cout<<"ram_add= "<<ram_all<<endl;
 		cout<<"cpu_left= "<<temp_sum.at(0)<<endl;
-		cout<<"ram_left= "<<temp_sum.at(0)<<endl;
-		cout<<"num1 = "<<buy_num1<<endl;
-		cout<<"num1 = "<<buy_num2<<endl;
+		cout<<"ram_left= "<<temp_sum.at(1)<<endl;
 
-		if (buy_num1 < 6){
-			buy_num1 = 6;
+		cpu_all = cpu_all - temp_sum.at(0);
+		ram_all = ram_all - temp_sum.at(1);		
+		
+		int buy_num1 = 10 * ceil(float(cpu_all)/float(cpu1));
+		int buy_num2 = 10 * ceil(float(ram_all)/float(ram2));
+
+		cout<<"num1 = "<<buy_num1<<endl;
+		cout<<"num2 = "<<buy_num2<<endl;
+
+		if (buy_num1 < 3){
+			buy_num1 = 3;
 		}
-		if (buy_num2 < 6){
-			buy_num2 = 6;
+		if (buy_num2 < 3){
+			buy_num2 = 3;
 		}
+
 		for (size_t j = 0; j < buy_num1; j++)
 		{
 			server_current.buyserver(type1,cpu1,ram1,buycost1,runcost1);
@@ -808,8 +858,8 @@ int main(int argc, char** argv)
 				//cout<<"id = "<<server_id<<endl;
 				//cout<<"flag = "<<nodeplace<<endl;
 				//cout<<"type = "<<vm_nodetype<<endl;
-				server_current.deployvm(server_id, nodeplace, vm_cpu, vm_ram, vm_nodetype);
-				vm_current.deployvm(vm_id, server_id, nodeplace, vm_type, vm_cpu, vm_ram, vm_nodetype);
+				int isfull = server_current.deployvm(server_id, nodeplace, vm_cpu, vm_ram, vm_nodetype);
+				vm_current.deployvm(vm_id, server_id, nodeplace, vm_type, vm_cpu, vm_ram, vm_nodetype, isfull);
 
 				string out ;
 				if (0 == vm_nodetype) {
@@ -835,9 +885,10 @@ int main(int argc, char** argv)
 				int vm_cpu = vm_current.searchdata(vm_id).cpu_;
 				int vm_ram = vm_current.searchdata(vm_id).ram_;
 				int vm_nodetype = vm_current.searchdata(vm_id).nodetype_;
+				int vm_isfull = vm_current.searchdata(vm_id).isfull_;
 
 				//进行删除
-				server_current.deletedata(server_id, vm_cpu, vm_ram, vm_nodetype, nodeplace);
+				server_current.deletedata(server_id, vm_cpu, vm_ram, vm_nodetype, nodeplace ,vm_isfull);
 				vm_current.deletevm(vm_id);
 				//vector<int>().swap(temp);
 			}
